@@ -34,12 +34,13 @@ class EncoderLayer(Module):
 
 
 class LanguageModel(Module):
-    def __init__(self, padding_idx=0, bert_hidden_size=768, vocab_size=10201, d_model=512, d_k=64, d_v=64, h=8, d_ff=2048, max_len=54, dropout=.1):
+    def __init__(self, padding_idx=0, bert_hidden_size=768, vocab_size=763, eos_idx=2, d_model=512, d_k=64, d_v=64, h=8, d_ff=512, max_len=59, dropout=.1):
         super(LanguageModel, self).__init__()
         self.padding_idx = padding_idx
+        self.eos_idx = eos_idx
         self.d_model = d_model
 
-        self.language_model = BertModel.from_pretrained('bert-base-uncased', return_dict=True)
+        self.language_model = BertModel.from_pretrained('bert-base-uncased')
         self.language_model.config.vocab_size = vocab_size
         self.proj_to_caption_model = nn.Linear(bert_hidden_size, d_model)
 
@@ -57,6 +58,10 @@ class LanguageModel(Module):
         encoder_attention_mask=None
     ):
         # input (b_s, seq_len)
+
+        eos_mask = input_ids == self.eos_idx
+        input_ids = input_ids.masked_fill(eos_mask, self.padding_idx)
+
         b_s, seq_len = input_ids.shape[:2]
         mask_queries = (input_ids != self.padding_idx).unsqueeze(-1).float()  # (b_s, seq_len, 1)
         mask_self_attention = torch.triu(torch.ones((seq_len, seq_len), dtype=torch.uint8, device=input_ids.device), diagonal=1)
@@ -82,7 +87,8 @@ class LanguageModel(Module):
             token_type_ids=token_type_ids,
             attention_mask=attention_mask
         )
-        language_feature = self.proj_to_caption_model(bert_output.last_hidden_state)
+
+        language_feature = self.proj_to_caption_model(bert_output[0])
         language_feature = language_feature + self.pos_emb(seq)
 
         language_feature = self.encoder_layer(language_feature, mask_queries, mask_self_attention)
@@ -90,4 +96,3 @@ class LanguageModel(Module):
         logits = self.proj_to_vocab(language_feature)
         out = F.log_softmax(logits, dim=-1)
         return out, language_feature
-

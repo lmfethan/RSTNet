@@ -3,9 +3,6 @@ import torch
 from torch import nn
 from models.containers import Module
 
-from middle import TensorRecorder
-
-recorder = TensorRecorder()
 
 
 class ScaledDotProductAttention(nn.Module):
@@ -56,7 +53,6 @@ class ScaledDotProductAttention(nn.Module):
         :param attention_weights: Multiplicative weights for attention values (b_s, h, nq, nk).
         :return:
         '''
-
         b_s, nq = queries.shape[:2]
         nk = keys.shape[1]
 
@@ -143,7 +139,8 @@ class ScaledDotProductGeometryAttention(nn.Module):
 
         w_g = box_relation_embed_matrix
         w_a = att
-        w_mn = torch.log(torch.clamp(w_g, min=1e-6)) + w_a
+        w_mn = torch.log(torch.clamp(w_g, min=1e-6)) + w_a #!
+        # w_mn = w_a
         w_mn = torch.softmax(w_mn, -1)  # bs * 8 * r * r
 
         att = self.dropout(w_mn)

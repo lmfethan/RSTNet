@@ -3,7 +3,27 @@ from torch import nn
 import copy
 from models.containers import ModuleList
 from ..captioning_model import CaptioningModel
-from models.rstnet.grid_aug import PositionEmbeddingSine
+# from models.rstnet.grid_aug import PositionEmbeddingSine
+import math
+
+class PositionalEncoding(nn.Module):
+    def __init__(self, d_model, dropout, max_len=5000):
+        super(PositionalEncoding, self).__init__()
+        self.dropout = nn.Dropout(p=dropout)
+
+        pe = torch.zeros(max_len, d_model)
+        position = torch.arange(0, max_len).unsqueeze(1).float()
+        div_term = torch.exp(torch.arange(0, d_model, 2).float() *
+                             -(math.log(10000.0) / d_model))
+        pe[:, 0::2] = torch.sin(position * div_term)
+        pe[:, 1::2] = torch.cos(position * div_term)
+        pe = pe.unsqueeze(0)
+        self.register_buffer('pe', pe)
+
+    def forward(self, x):
+        x = x + self.pe[:, :x.size(1)]
+        return self.dropout(x)
+
 
 
 class Transformer(CaptioningModel):
@@ -12,7 +32,13 @@ class Transformer(CaptioningModel):
         self.bos_idx = bos_idx
         self.encoder = encoder
         self.decoder = decoder
-        self.grid_embedding = PositionEmbeddingSine(self.decoder.d_model // 2, normalize=True)
+        self.grid_embedding = PositionalEncoding(self.decoder.d_model, 0.1)
+
+        self.fc = nn.Linear(2048, self.decoder.d_model)
+        self.bn1 = nn.BatchNorm1d(2048)
+        self.bn2 = nn.BatchNorm1d(512)
+        self.relu = nn.ReLU()
+        self.dropout = nn.Dropout(0.1)
 
         self.register_state('enc_output', None)
         self.register_state('mask_enc', None)
@@ -27,9 +53,18 @@ class Transformer(CaptioningModel):
             if p.dim() > 1:
                 nn.init.xavier_uniform_(p)
 
+
+    def att_embed(self, feats):
+        # feats = self.bn1(feats)
+        feats = self.fc(feats)
+        feats = self.relu(feats)
+        feats = self.dropout(feats)
+        # feats = self.bn2(feats)
+        return feats
+
     def get_pos_embedding(self, grids):
-        bs = grids.shape[0]
-        grid_embed = self.grid_embedding(grids.view(bs, 7, 7, -1))
+        grids = self.att_embed(grids)
+        grid_embed = self.grid_embedding(grids)
         return grid_embed
 
     def forward(self, images, seq, *args):

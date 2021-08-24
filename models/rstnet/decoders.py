@@ -91,10 +91,10 @@ class TransformerDecoderLayer(Module):
 
         # load and froze language model  
         self.language_model = LanguageModel(padding_idx=padding_idx, bert_hidden_size=bert_hidden_size, vocab_size=vocab_size, max_len=max_len)
-        model_file = torch.load(language_model_path)
-        self.language_model.load_state_dict(model_file['state_dict'], strict=False)
-        for p in self.language_model.parameters():
-            p.requires_grad = False
+        # model_file = torch.load(language_model_path)
+        # self.language_model.load_state_dict(model_file['state_dict'], strict=False)
+        # for p in self.language_model.parameters():
+        #     p.requires_grad = False
 
         self.max_len = max_len
         self.padding_idx = padding_idx

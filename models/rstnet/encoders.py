@@ -4,6 +4,7 @@ import torch
 from torch import nn
 from models.rstnet.attention import MultiHeadGeometryAttention
 from models.rstnet.grid_aug import BoxRelationalEmbedding
+import math
 
 
 class EncoderLayer(nn.Module):
@@ -50,13 +51,25 @@ class MultiLevelEncoder(nn.Module):
 
         # grid geometry embedding
         # follow implementation of https://github.com/yahoo/object_relation_transformer/blob/ec4a29904035e4b3030a9447d14c323b4f321191/models/RelationTransformerModel.py
-        relative_geometry_embeddings = BoxRelationalEmbedding(input)
+        
+        bs, seq_len = input.shape[:2]
+        iu_xray = False
+        if math.sqrt(seq_len) != int(math.sqrt(seq_len)): # iu_xray
+            iu_xray = True
+            seq_len = seq_len // 2
+        relative_geometry_embeddings = BoxRelationalEmbedding(bs, seq_len)
         flatten_relative_geometry_embeddings = relative_geometry_embeddings.view(-1, 64)
         box_size_per_head = list(relative_geometry_embeddings.shape[:3])
         box_size_per_head.insert(1, 1)
         relative_geometry_weights_per_head = [layer(flatten_relative_geometry_embeddings).view(box_size_per_head) for layer in self.WGs]
         relative_geometry_weights = torch.cat((relative_geometry_weights_per_head), 1)
         relative_geometry_weights = F.relu(relative_geometry_weights)
+        
+        if iu_xray:
+            zeros = torch.zeros_like(relative_geometry_weights)
+            relative_geometry_weights1 = torch.cat([relative_geometry_weights, zeros], dim = -2)
+            relative_geometry_weights2 = torch.cat([zeros, relative_geometry_weights], dim = -2)
+            relative_geometry_weights = torch.cat([relative_geometry_weights1, relative_geometry_weights2], dim = -1)
 
         out = input
         for layer in self.layers:

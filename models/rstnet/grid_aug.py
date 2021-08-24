@@ -74,7 +74,7 @@ def get_grids_pos(batch_size, seq_len, grid_size=(7, 7)):
     return rpx_min, rpy_min, rpx_max, rpy_max
 
 
-def BoxRelationalEmbedding(f_g, dim_g=64, wave_len=1000, trignometric_embedding=True):
+def BoxRelationalEmbedding(batch_size, seq_len, dim_g=64, wave_len=1000, trignometric_embedding=True):
     """
     Given a tensor with bbox coordinates for detected objects on each batch image,
     this function computes a matrix for each image
@@ -88,7 +88,7 @@ def BoxRelationalEmbedding(f_g, dim_g=64, wave_len=1000, trignometric_embedding=
     # returns a relational embedding for each pair of bboxes, with dimension = dim_g
     # follow implementation of https://github.com/heefe92/Relation_Networks-pytorch/blob/master/model.py#L1014-L1055
 
-    batch_size, seq_len = f_g.size(0), f_g.size(1)
+
     x_min, y_min, x_max, y_max = get_grids_pos(batch_size, seq_len)
 
     cx = (x_min + x_max) * 0.5
