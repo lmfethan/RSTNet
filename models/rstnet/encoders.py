@@ -47,7 +47,9 @@ class MultiLevelEncoder(nn.Module):
 
     def forward(self, input, attention_weights=None, pos=None):
         # input (b_s, seq_len, d_in)
-        attention_mask = (torch.sum(input, -1) == self.padding_idx).unsqueeze(1).unsqueeze(1)  # (b_s, 1, 1, seq_len)
+        # attention_mask = (torch.sum(input, -1) == self.padding_idx).unsqueeze(1).unsqueeze(1)  # (b_s, 1, 1, seq_len)
+        bs, seq_len = input.shape[:2]
+        attention_mask = torch.zeros((bs, 1, 1, seq_len), dtype=torch.bool).to(input.device)
 
         # grid geometry embedding
         # follow implementation of https://github.com/yahoo/object_relation_transformer/blob/ec4a29904035e4b3030a9447d14c323b4f321191/models/RelationTransformerModel.py
@@ -74,7 +76,6 @@ class MultiLevelEncoder(nn.Module):
         out = input
         for layer in self.layers:
             out = layer(out, out, out, relative_geometry_weights, attention_mask, attention_weights, pos=pos)
-
         return out, attention_mask
 
 

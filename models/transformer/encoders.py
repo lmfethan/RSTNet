@@ -38,9 +38,10 @@ class MultiLevelEncoder(nn.Module):
                                      for _ in range(N)])
         self.padding_idx = padding_idx
 
-    def forward(self, input, attention_weights=None):
+    def forward(self, input, attention_mask=None, attention_weights=None):
         # input (b_s, seq_len, d_in)
-        attention_mask = (torch.sum(input, -1) == self.padding_idx).unsqueeze(1).unsqueeze(1)  # (b_s, 1, 1, seq_len)
+        if attention_mask is None:
+            attention_mask = (torch.sum(input, -1) == self.padding_idx).unsqueeze(1).unsqueeze(1)  # (b_s, 1, 1, seq_len)
 
         out = input
         for l in self.layers:
@@ -58,10 +59,11 @@ class TransformerEncoder(MultiLevelEncoder):
         self.dropout = nn.Dropout(p=self.dropout)
         self.layer_norm = nn.LayerNorm(self.d_model)
 
-    def forward(self, input, attention_weights=None):
+    def forward(self, input, mask_enc, attention_weights=None):
+        print(torch.sum(input, dim=-1) == 0)
         mask = (torch.sum(input, dim=-1) == 0).unsqueeze(-1)
         out = F.relu(self.fc(input))
         out = self.dropout(out)
         out = self.layer_norm(out)
         out = out.masked_fill(mask, 0)
-        return super(TransformerEncoder, self).forward(out, attention_weights=attention_weights)
+        return super(TransformerEncoder, self).forward(out, mask_enc, attention_weights=attention_weights)

@@ -83,7 +83,7 @@ class TransformerDecoderLayer(Module):
                  self_att_module=None, enc_att_module=None, self_att_module_kwargs=None, enc_att_module_kwargs=None):
         super(TransformerDecoderLayer, self).__init__()
         self.d_model = d_model
-        self.word_emb = nn.Embedding(vocab_size, d_model, padding_idx=padding_idx)
+        self.word_emb = nn.Embedding(vocab_size, d_model)
         self.pos_emb = nn.Embedding.from_pretrained(sinusoid_encoding_table(max_len + 1, d_model, 0), freeze=True)
         self.layers = ModuleList(
             [DecoderLayer(d_model, d_k, d_v, h, d_ff, dropout, self_att_module=self_att_module, enc_att_module=enc_att_module, self_att_module_kwargs=self_att_module_kwargs, enc_att_module_kwargs=enc_att_module_kwargs) if i < N_dec else DecoderAdaptiveLayer(d_model, d_k, d_v, h, d_ff, dropout, self_att_module=self_att_module, enc_att_module=enc_att_module, self_att_module_kwargs=self_att_module_kwargs, enc_att_module_kwargs=enc_att_module_kwargs) for i in range(N_dec + 1)])
@@ -112,6 +112,7 @@ class TransformerDecoderLayer(Module):
         mask_self_attention = mask_self_attention.unsqueeze(0).unsqueeze(0)  # (1, 1, seq_len, seq_len)
         mask_self_attention = mask_self_attention + (input == self.padding_idx).unsqueeze(1).unsqueeze(1).byte()
         mask_self_attention = mask_self_attention.gt(0)  # (b_s, 1, seq_len, seq_len)
+        mask_self_attention[..., 0] = False
         if self._is_stateful:
             self.running_mask_self_attention = torch.cat([self.running_mask_self_attention.type_as(mask_self_attention), mask_self_attention], -1)
             mask_self_attention = self.running_mask_self_attention
@@ -136,6 +137,7 @@ class TransformerDecoderLayer(Module):
         for i, l in enumerate(self.layers):
             if i < self.N:
                 out = l(out, encoder_output, mask_queries, mask_self_attention, mask_encoder, pos=pos)
+                print(out)
             else:
                 out = l(out, encoder_output, mask_queries, mask_self_attention, mask_encoder, language_feature, pos=pos)
 

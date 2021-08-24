@@ -87,9 +87,9 @@ def train_xe(model, visual_extractor, dataloader, tokenizer, optim, device):
     with tqdm(desc='Epoch %d - train' % e, unit='it', total=len(dataloader)) as pbar:
         for it, (images_id, images, captions, reports_masks) in enumerate(dataloader_train):
             images, captions, reports_masks = images.to(device), captions.to(device), reports_masks.to(device)
-            print(captions)
             features = visual_extractor(images)
             out = model(features, captions)
+            print('out', out)
             optim.zero_grad()
 
             # print('captions', (captions == tokenizer.token2idx['<eos>']).sum())

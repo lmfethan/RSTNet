@@ -152,6 +152,7 @@ tb/
 logs/
 *.log
 *.out
+language_tensorboard_logs/
 
 #pretrained model
 Pre-trained_Models
