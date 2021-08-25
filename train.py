@@ -87,7 +87,6 @@ def train_xe(model, visual_extractor, dataloader, tokenizer, optim, device):
     with tqdm(desc='Epoch %d - train' % e, unit='it', total=len(dataloader)) as pbar:
         for it, (images_id, images, captions, reports_masks) in enumerate(dataloader_train):
             images, captions, reports_masks = images.to(device), captions.to(device), reports_masks.to(device)
-            print(captions)
             features = visual_extractor(images)
             out = model(features, captions)
             optim.zero_grad()
@@ -271,7 +270,7 @@ if __name__ == '__main__':
         {'params': ve.parameters(), 'lr': args.lr_ve}
     ])
     # scheduler = LambdaLR(optim, lambda_lr)
-    scheduler = torch.optim.lr_scheduler.StepLR(optim, 10, 0.8)
+    scheduler = torch.optim.lr_scheduler.StepLR(optim, 10, 0.1)
     # optim_ve = Adam(ve.parameters(), lr=5e-5)
     # scheduler_ve = torch.optim.lr_scheduler.StepLR(optim_ve, args.step_size, args.gamma)
 

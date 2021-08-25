@@ -59,8 +59,8 @@ class LanguageModel(Module):
     ):
         # input (b_s, seq_len)
 
-        eos_mask = input_ids == self.eos_idx
-        input_ids = input_ids.masked_fill(eos_mask, self.padding_idx)
+        # eos_mask = input_ids == self.eos_idx
+        # input_ids = input_ids.masked_fill(eos_mask, self.padding_idx)
 
         b_s, seq_len = input_ids.shape[:2]
         mask_queries = (input_ids != self.padding_idx).unsqueeze(-1).float()  # (b_s, seq_len, 1)
