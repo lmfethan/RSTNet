@@ -116,54 +116,6 @@ def train_xe(model, visual_extractor, dataloader, tokenizer, optim, device):
 
     return loss, sum_eos
 
-
-# def train_scst(model, dataloader, optim, cider, text_field):
-#     # Training with self-critical
-#     tokenizer_pool = multiprocessing.Pool()
-#     running_reward = .0
-#     running_reward_baseline = .0
-
-#     model.train()
-#     scheduler_rl.step()
-#     print('lr = ', optim_rl.state_dict()['param_groups'][0]['lr'])
-
-#     running_loss = .0
-#     seq_len = 20
-#     beam_size = 5
-
-#     with tqdm(desc='Epoch %d - train' % e, unit='it', total=len(dataloader)) as pbar:
-#         for it, (detections, caps_gt) in enumerate(dataloader):
-#             detections = detections.to(device)
-#             outs, log_probs = model.beam_search(detections, seq_len, text_field.vocab.stoi['<eos>'],
-#                                                 beam_size, out_size=beam_size)
-#             optim.zero_grad()
-
-#             # Rewards
-#             caps_gen = text_field.decode(outs.view(-1, seq_len))
-#             caps_gt = list(itertools.chain(*([c, ] * beam_size for c in caps_gt)))
-#             caps_gen, caps_gt = tokenizer_pool.map(evaluation.PTBTokenizer.tokenize, [caps_gen, caps_gt])
-#             reward = cider.compute_score(caps_gt, caps_gen)[1].astype(np.float32)
-#             reward = torch.from_numpy(reward).to(device).view(detections.shape[0], beam_size)
-#             reward_baseline = torch.mean(reward, -1, keepdim=True)
-#             loss = -torch.mean(log_probs, -1) * (reward - reward_baseline)
-
-#             loss = loss.mean()
-#             loss.backward()
-#             optim.step()
-
-#             running_loss += loss.item()
-#             running_reward += reward.mean().item()
-#             running_reward_baseline += reward_baseline.mean().item()
-#             pbar.set_postfix(loss=running_loss / (it + 1), reward=running_reward / (it + 1),
-#                              reward_baseline=running_reward_baseline / (it + 1))
-#             pbar.update()
-
-#     loss = running_loss / len(dataloader)
-#     reward = running_reward / len(dataloader)
-#     reward_baseline = running_reward_baseline / len(dataloader)
-#     return loss, reward, reward_baseline
-
-
 if __name__ == '__main__':
     device = torch.device('cuda')
     parser = argparse.ArgumentParser(description='Transformer')
@@ -193,15 +145,15 @@ if __name__ == '__main__':
     parser.add_argument('--visual_extractor', type=str, default='resnet101', help='the visual extractor to be used.')
     parser.add_argument('--visual_extractor_pretrained', type=bool, default=True, help='whether to load the pretrained visual extractor')
 
-    parser.add_argument('--lr_model', type=float, default=1e-4, help='the learning rate for the transformer.')
-    parser.add_argument('--lr_ve', type=float, default=5e-5, help='the learning rate for the visual extractor.')
+    parser.add_argument('--lr_model', type=float, default=0.5, help='the learning rate for the transformer.')
+    parser.add_argument('--lr_ve', type=float, default=0.25, help='the learning rate for the visual extractor.')
+    parser.add_argument('--lr_bert', type=float, default=1, help='the learning rate for BERT.')
 
-    parser.add_argument('--epochs', type=int, default=1000)
+    parser.add_argument('--epochs', type=int, default=100)
     parser.add_argument('--beam_size', type=int, default=3, help='the beam size when beam searching.')
-    parser.add_argument('--patience', type=int, default=1000)
+    parser.add_argument('--patience', type=int, default=100)
 
     parser.add_argument('--xe_base_lr', type=float, default=0.0001)
-    parser.add_argument('--rl_base_lr', type=float, default=5e-6)
 
     args = parser.parse_args()
     print(args)
@@ -214,13 +166,11 @@ if __name__ == '__main__':
     torch.backends.cudnn.benchmark = False
     np.random.seed(args.seed)
 
-
     # Create the dataset
     tokenizer = Tokenizer(args)
     dataloader_train = R2DataLoader(args, tokenizer, split='train', shuffle=True)
     dataloader_val = R2DataLoader(args, tokenizer, split='val', shuffle=False)
     dataloader_test = R2DataLoader(args, tokenizer, split='test', shuffle=False)
-    
 
     # Model and dataloaders
     encoder = TransformerEncoder(3, tokenizer.token2idx['<pad>'], attention_module=ScaledDotProductAttention, attention_module_kwargs={'m': args.m})
@@ -230,13 +180,6 @@ if __name__ == '__main__':
 
     # ref_caps_train = list(train_dataset.text)
     # cider_train = Cider(PTBTokenizer.tokenize(ref_caps_train))
-
-    '''
-    def lambda_lr(s):
-        warm_up = args.warmup
-        s += 1
-        return (model.d_model ** -.5) * min(s ** -.5, s * warm_up ** -1.5)
-    '''
 
     def lambda_lr(s):
         print("s:", s)
@@ -249,38 +192,22 @@ if __name__ == '__main__':
         else:
             lr = args.xe_base_lr * 0.2 * 0.2
         return lr
-    
-    # def lambda_lr_rl(s):
-    #     refine_epoch = args.refine_epoch_rl 
-    #     print("rl_s:", s)
-    #     if s <= refine_epoch:
-    #         lr = args.rl_base_lr
-    #     elif s <= refine_epoch + 3:
-    #         lr = args.rl_base_lr * 0.2
-    #     elif s <= refine_epoch + 6:
-    #         lr = args.rl_base_lr * 0.2 * 0.2
-    #     else:
-    #         lr = args.rl_base_lr * 0.2 * 0.2 * 0.2
-    #     return lr
-
 
     # Initial conditions
-    # optim = Adam(model.parameters(), lr=1, betas=(0.9, 0.98))
-    # optim = Adam([
-    #     {'params': model.parameters(), 'lr': args.lr_model, 'betas': (0.9, 0.98)},
-    #     {'params': ve.parameters(), 'lr': args.lr_ve}
-    # ])
+
+    bert_params = list(map(id, model.decoder.language_model.parameters()))
+    ed_params = filter(lambda x: id(x) not in bert_params, model.parameters())
     optim = Adam([
-        {'params': model.parameters(), 'lr': 1, 'betas': (0.9, 0.98)},
-        {'params': ve.parameters(), 'lr': 0.5}
+        {'params': model.decoder.language_model.parameters(), 'lr': args.lr_bert},
+        {'params': ed_params, 'lr': args.lr_model, 'betas': (0.9, 0.98)},
+        {'params': ve.parameters(), 'lr': args.lr_ve}
     ])
     scheduler = LambdaLR(optim, lambda_lr)
-    # scheduler = torch.optim.lr_scheduler.StepLR(optim, 10, 0.1)
 
     loss_fn = NLLLoss(ignore_index=tokenizer.token2idx['<pad>'])
-    use_rl = False
     # best_cider = .0
     # best_test_cider = 0.
+    use_rl = False
     best_bleu4 = .0
     best_test_bleu4 = 0.
     patience = 0
@@ -318,15 +245,7 @@ if __name__ == '__main__':
 
     print("Training starts")
     for e in range(start_epoch, start_epoch + args.epochs):
-        
-        # if not use_rl:
-        #     train_loss = train_xe(model, dataloader_train, optim, text_field)
-        #     writer.add_scalar('data/train_loss', train_loss, e)
-        # else:
-        #     train_loss, reward, reward_baseline = train_scst(model, dict_dataloader_train, optim_rl, cider_train, text_field)
-        #     writer.add_scalar('data/train_loss', train_loss, e)
-        #     writer.add_scalar('data/reward', reward, e)
-        #     writer.add_scalar('data/reward_baseline', reward_baseline, e)
+
         train_loss, sum_eos = train_xe(model, ve, dataloader_train, tokenizer, optim, device)
         writer.add_scalar('data/train_loss', train_loss, e)
 
@@ -372,85 +291,35 @@ if __name__ == '__main__':
             best_test_bleu4 = test_bleu4
             best_test = True
 
-        # switch_to_rl = False
         exit_train = False
-
-        # if patience == 5:
-        #     if e < args.xe_least:   # xe stage train 15 epoches at least 
-        #         print('special treatment, e = {}'.format(e))
-        #         use_rl = False
-        #         switch_to_rl = False
-        #         patience = 0
-        #     elif not use_rl:
-        #         use_rl = True
-        #         switch_to_rl = True
-        #         patience = 0
-                
-        #         optim_rl = Adam(model.parameters(), lr=1, betas=(0.9, 0.98))
-        #         scheduler_rl = LambdaLR(optim_rl, lambda_lr_rl)
-                
-        #         for k in range(e-1):
-        #             scheduler_rl.step()
-
-        #         print("Switching to RL")
-        #     else:
-        #         print('patience reached.')
-        #         exit_train = True
-
-        # if e == args.xe_most:     # xe stage no more than 20 epoches
-        #     if not use_rl:
-        #         use_rl = True
-        #         switch_to_rl = True
-        #         patience = 0
-                
-        #         optim_rl = Adam(model.parameters(), lr=1, betas=(0.9, 0.98))
-        #         scheduler_rl = LambdaLR(optim_rl, lambda_lr_rl)
-
-        #         for k in range(e-1):
-        #             scheduler_rl.step()
-
-        #         print("Switching to RL")
 
         if patience == args.patience:
             print('patience reached.')
             exit_train = True
-
-        # if switch_to_rl and not best:
-        #     data = torch.load('saved_transformer_models/%s_best.pth' % args.exp_name)
-        #     torch.set_rng_state(data['torch_rng_state'])
-        #     torch.cuda.set_rng_state(data['cuda_rng_state'])
-        #     np.random.set_state(data['numpy_rng_state'])
-        #     random.setstate(data['random_rng_state'])
-        #     model.load_state_dict(data['state_dict'])
-        #     print('Resuming from epoch %d, validation loss %f, best_cider %f, and best test_cider %f' % (
-        #         data['epoch'], data['val_loss'], data['best_cider'], data['best_test_cider']))
-
         
-        if e % 10 == 0 or best or best_test:
-            torch.save({
-                'torch_rng_state': torch.get_rng_state(),
-                'cuda_rng_state': torch.cuda.get_rng_state(),
-                'numpy_rng_state': np.random.get_state(),
-                'random_rng_state': random.getstate(),
-                'epoch': e,
-                'val_loss': val_loss,
-                'val_bleu4': val_bleu4,
-                'tr_state_dict': model.state_dict(),
-                've_state_dict': ve.state_dict(),
-                'optimizer': optim.state_dict() if not use_rl else optim_rl.state_dict(),
-                'scheduler': scheduler.state_dict() if not use_rl else scheduler_rl.state_dict(),
-                'patience': patience,
-                'best_bleu4': best_bleu4,
-                'best_test_bleu4': best_test_bleu4,
-                'use_rl': use_rl,
-            }, 'saved_transformer_models/%s_last.pth' % args.exp_name)
+        torch.save({
+            'torch_rng_state': torch.get_rng_state(),
+            'cuda_rng_state': torch.cuda.get_rng_state(),
+            'numpy_rng_state': np.random.get_state(),
+            'random_rng_state': random.getstate(),
+            'epoch': e,
+            'val_loss': val_loss,
+            'val_bleu4': val_bleu4,
+            'tr_state_dict': model.state_dict(),
+            've_state_dict': ve.state_dict(),
+            'optimizer': optim.state_dict() if not use_rl else optim_rl.state_dict(),
+            'scheduler': scheduler.state_dict() if not use_rl else scheduler_rl.state_dict(),
+            'patience': patience,
+            'best_bleu4': best_bleu4,
+            'best_test_bleu4': best_test_bleu4,
+            'use_rl': use_rl,
+        }, 'saved_transformer_models/%s_last.pth' % args.exp_name)
 
-            if best:
-                copyfile('saved_transformer_models/%s_last.pth' % args.exp_name, 'saved_transformer_models/%s_best.pth' % args.exp_name)
-            if best_test:
-                copyfile('saved_transformer_models/%s_last.pth' % args.exp_name, 'saved_transformer_models/%s_best_test.pth' % args.exp_name)
-            if e > 50:
-                copyfile('saved_transformer_models/%s_last.pth' % args.exp_name, 'saved_transformer_models/{}_{}.pth'.format(args.exp_name, e))
+        if best:
+            copyfile('saved_transformer_models/%s_last.pth' % args.exp_name, 'saved_transformer_models/%s_best.pth' % args.exp_name)
+        if best_test:
+            copyfile('saved_transformer_models/%s_last.pth' % args.exp_name, 'saved_transformer_models/%s_best_test.pth' % args.exp_name)
+
 
         if exit_train:
             writer.close()
