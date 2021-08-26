@@ -78,6 +78,7 @@ def evaluate_metrics(model, visual_extractor, dataloader, tokenizer, args, devic
 def train_xe(model, visual_extractor, dataloader, tokenizer, optim, device):
     # Training with cross-entropy
     model.train()
+    scheduler.step()
     print('lr = ', optim.state_dict()['param_groups'][0]['lr'])
     
     running_loss = .0
@@ -111,7 +112,7 @@ def train_xe(model, visual_extractor, dataloader, tokenizer, optim, device):
 
     loss = running_loss / len(dataloader)
 
-    scheduler.step()
+    # scheduler.step()
 
     return loss, sum_eos
 
@@ -265,17 +266,16 @@ if __name__ == '__main__':
 
     # Initial conditions
     # optim = Adam(model.parameters(), lr=1, betas=(0.9, 0.98))
+    # optim = Adam([
+    #     {'params': model.parameters(), 'lr': args.lr_model, 'betas': (0.9, 0.98)},
+    #     {'params': ve.parameters(), 'lr': args.lr_ve}
+    # ])
     optim = Adam([
-        {'params': model.parameters(), 'lr': args.lr_model, 'betas': (0.9, 0.98)},
-        {'params': ve.parameters(), 'lr': args.lr_ve}
+        {'params': model.parameters(), 'lr': 1, 'betas': (0.9, 0.98)},
+        {'params': ve.parameters(), 'lr': 0.5}
     ])
-    # scheduler = LambdaLR(optim, lambda_lr)
-    scheduler = torch.optim.lr_scheduler.StepLR(optim, 10, 0.1)
-    # optim_ve = Adam(ve.parameters(), lr=5e-5)
-    # scheduler_ve = torch.optim.lr_scheduler.StepLR(optim_ve, args.step_size, args.gamma)
-
-    # optim_rl = Adam(model.parameters(), lr=1, betas=(0.9, 0.98))
-    # scheduler_rl = LambdaLR(optim_rl, lambda_lr_rl)
+    scheduler = LambdaLR(optim, lambda_lr)
+    # scheduler = torch.optim.lr_scheduler.StepLR(optim, 10, 0.1)
 
     loss_fn = NLLLoss(ignore_index=tokenizer.token2idx['<pad>'])
     use_rl = False
